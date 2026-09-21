@@ -6,7 +6,7 @@
       "total_joint_leave": 2,
       "source_pdf": "https://data-jdih.menpan.go.id/dokumen/2025skbmenpanrb005.pdf",
       "source_sha256": "fead795bdcd98c384db2761a46d19ba643a80d8779fbb0040a938ba57896bd24",
-      "scraped_at": "2026-09-21T17:46:29.335293+00:00",
+      "scraped_at": "2026-09-21T17:47:55.506048+00:00",
       "complete": false
     },
     "2027": {
@@ -21,5 +21,5 @@
   },
   "latest_year": 2027,
   "next_check_after": "2026-09-28",
-  "updated_at": "2026-09-21T17:46:30.862330+00:00"
+  "updated_at": "2026-09-21T17:47:56.825728+00:00"
 }
