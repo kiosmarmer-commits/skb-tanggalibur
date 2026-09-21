@@ -1,0 +1,65 @@
+{
+  "year": 2025,
+  "source": "Keputusan Bersama Menteri Agama, Ketenagakerjaan, dan PANRB",
+  "scraped_at": "2026-09-21T08:39:36.256138+00:00",
+  "national_holidays": [
+    {
+      "date": "2025-01-01",
+      "day": "Rabu",
+      "name": "Tahun Baru 2025 Masehi",
+      "type": "national_holiday"
+    },
+    {
+      "date": "2025-01-27",
+      "day": "Senin",
+      "name": "Isra Mikraj Nabi Muhammad S.A.W.",
+      "type": "national_holiday"
+    },
+    {
+      "date": "2025-03-29",
+      "day": "Sabtu",
+      "name": "Hari Suci Nyepi (Tahun Baru Saka 1947)",
+      "type": "national_holiday"
+    },
+    {
+      "date": "2025-04-18",
+      "day": "Jumat",
+      "name": "Wafat Yesus Kristus",
+      "type": "national_holiday"
+    },
+    {
+      "date": "2025-08-17",
+      "day": "Minggu",
+      "name": "Proklamasi Kemerdekaan",
+      "type": "national_holiday"
+    },
+    {
+      "date": "2025-09-05",
+      "day": "Jumat",
+      "name": "Maulid Nabi Muhammad S.A.W.",
+      "type": "national_holiday"
+    },
+    {
+      "date": "2025-12-25",
+      "day": "Kamis",
+      "name": "Kelahiran Yesus Kristus",
+      "type": "national_holiday"
+    }
+  ],
+  "joint_leave": [
+    {
+      "date": "2025-03-28",
+      "day": "Jumat Hari Suci Nyepi",
+      "name": "(Tahun Baru Saka 1947)",
+      "type": "joint_leave"
+    },
+    {
+      "date": "2025-06-09",
+      "day": "Senin Idul Adha",
+      "name": "1446 Hijriah",
+      "type": "joint_leave"
+    }
+  ],
+  "total_national": 7,
+  "total_joint_leave": 2
+}
