@@ -1,9 +1,97 @@
 {
   "year": 2026,
   "source": "Keputusan Bersama Menteri Agama, Ketenagakerjaan, dan PANRB",
-  "scraped_at": "2026-09-21T15:34:05.537650+00:00",
-  "national_holidays": [],
-  "joint_leave": [],
-  "total_national": 0,
-  "total_joint_leave": 0
+  "scraped_at": "2026-09-21T17:29:02.678379+00:00",
+  "national_holidays": [
+    {
+      "date": "2026-01-01",
+      "day": "Kamis",
+      "name": "Tahun Baru 2026 Masehi",
+      "type": "national_holiday",
+      "source": "fixed_calendar"
+    },
+    {
+      "date": "2026-02-17",
+      "day": "",
+      "name": "Tahun Baru Imlek 2577 Kongzili",
+      "type": "national_holiday"
+    },
+    {
+      "date": "2026-03-22",
+      "day": "Sabtu",
+      "name": "Idul Fitri 1447 Hijriah",
+      "type": "national_holiday"
+    },
+    {
+      "date": "2026-04-03",
+      "day": "",
+      "name": "Wafat Yesus Kristus",
+      "type": "national_holiday"
+    },
+    {
+      "date": "2026-04-05",
+      "day": "Minggu",
+      "name": "Kebangkitan Yesus Kristus (Paskah)",
+      "type": "national_holiday"
+    },
+    {
+      "date": "2026-05-01",
+      "day": "Jumat",
+      "name": "Hari Buruh Internasional",
+      "type": "national_holiday"
+    },
+    {
+      "date": "2026-05-14",
+      "day": "Kamis",
+      "name": "Kenaikan Yesus Kristus",
+      "type": "national_holiday"
+    },
+    {
+      "date": "2026-06-01",
+      "day": "Senin",
+      "name": "Hari Lahir Pancasila",
+      "type": "national_holiday",
+      "source": "fixed_calendar"
+    },
+    {
+      "date": "2026-06-16",
+      "day": "Selasa",
+      "name": "1 Muharam Tahun Baru Islam",
+      "type": "national_holiday"
+    },
+    {
+      "date": "2026-08-17",
+      "day": "",
+      "name": "Proklamasi Kemerdekaan",
+      "type": "national_holiday"
+    },
+    {
+      "date": "2026-08-25",
+      "day": "",
+      "name": "Maulid Nabi Muhammad S.A.W.",
+      "type": "national_holiday"
+    },
+    {
+      "date": "2026-12-25",
+      "day": "",
+      "name": "Kelahiran Yesus Kristus",
+      "type": "national_holiday"
+    }
+  ],
+  "joint_leave": [
+    {
+      "date": "2026-02-16",
+      "day": "",
+      "name": "Tahun Baru Imlek 2577 Kongzili",
+      "type": "joint_leave"
+    },
+    {
+      "date": "2026-12-24",
+      "day": "",
+      "name": "Kelahiran Yesus Kristus",
+      "type": "joint_leave"
+    }
+  ],
+  "total_national": 12,
+  "total_joint_leave": 2
 }
