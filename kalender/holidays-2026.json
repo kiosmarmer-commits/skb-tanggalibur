@@ -1,19 +1,30 @@
 {
   "year": 2026,
   "source": "Keputusan Bersama Menteri Agama, Ketenagakerjaan, dan PANRB",
-  "scraped_at": "2026-09-21T17:47:55.506048+00:00",
+  "scraped_at": "2026-09-21T17:48:31.363731+00:00",
   "national_holidays": [
     {
       "date": "2026-01-01",
       "day": "Kamis",
       "name": "Tahun Baru 2026 Masehi",
-      "type": "national_holiday",
-      "source": "fixed_calendar"
+      "type": "national_holiday"
+    },
+    {
+      "date": "2026-01-16",
+      "day": "Jumat",
+      "name": "Isra Mikraj Nabi Muhammad S.A.W.",
+      "type": "national_holiday"
     },
     {
       "date": "2026-02-17",
       "day": "Selasa",
       "name": "Tahun Baru Imlek 2577 Kongzili",
+      "type": "national_holiday"
+    },
+    {
+      "date": "2026-03-19",
+      "day": "Kamis",
+      "name": "Hari Suci Nyepi",
       "type": "national_holiday"
     },
     {
@@ -53,11 +64,22 @@
       "type": "national_holiday"
     },
     {
+      "date": "2026-05-27",
+      "day": "Rabu",
+      "name": "Idul Adha 1447 Hijriah",
+      "type": "national_holiday"
+    },
+    {
+      "date": "2026-05-31",
+      "day": "Minggu",
+      "name": "Hari Raya Waisak 2570 BE",
+      "type": "national_holiday"
+    },
+    {
       "date": "2026-06-01",
       "day": "Senin",
       "name": "Hari Lahir Pancasila",
-      "type": "national_holiday",
-      "source": "fixed_calendar"
+      "type": "national_holiday"
     },
     {
       "date": "2026-06-16",
@@ -92,12 +114,48 @@
       "type": "joint_leave"
     },
     {
+      "date": "2026-03-18",
+      "day": "Rabu",
+      "name": "Hari Suci Nyepi",
+      "type": "joint_leave"
+    },
+    {
+      "date": "2026-03-20",
+      "day": "Jumat",
+      "name": "Idul Fitri 1447 Hijriah",
+      "type": "joint_leave"
+    },
+    {
+      "date": "2026-03-23",
+      "day": "Senin",
+      "name": "Idul Fitri 1447 Hijriah",
+      "type": "joint_leave"
+    },
+    {
+      "date": "2026-03-24",
+      "day": "Selasa",
+      "name": "Idul Fitri 1447 Hijriah",
+      "type": "joint_leave"
+    },
+    {
+      "date": "2026-05-15",
+      "day": "Jumat",
+      "name": "Kenaikan Yesus Kristus",
+      "type": "joint_leave"
+    },
+    {
+      "date": "2026-05-28",
+      "day": "Kamis",
+      "name": "Idul Adha 1447 Hijriah",
+      "type": "joint_leave"
+    },
+    {
       "date": "2026-12-24",
       "day": "Kamis",
       "name": "Kelahiran Yesus Kristus",
       "type": "joint_leave"
     }
   ],
-  "total_national": 13,
-  "total_joint_leave": 2
+  "total_national": 17,
+  "total_joint_leave": 8
 }
