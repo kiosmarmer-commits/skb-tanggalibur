@@ -66,20 +66,18 @@ HEADERS = {
 }
 
 # Mapping nama file PDF yang sudah diketahui (fallback cepat)
-KNOWN_PDFS = {
+# URL PDF langsung (bukan hanya nama file) untuk fallback cepat
+KNOWN_PDF_URLS = {
     2027: [
-        "2026skb002.pdf",
+        "https://data-jdih.menpan.go.id/dokumen/2026skb002.pdf",
     ],
     2026: [
-        "2025skbmenpanrb005.pdf",
-        "2025skb005.pdf",
-        "2025skb002.pdf",
+        "https://data-jdih.menpan.go.id/dokumen/2025skbmenpanrb005.pdf",
+        "https://data-jdih.menpan.go.id/dokumen/2025skb005.pdf",
     ],
     2025: [
-        "2024skb002.pdf",
-        "2024skbmenpanrb002.pdf",
-        "2024skbmenpanrb005.pdf",
-        "1017.pdf",
+        "https://jdih.kemenkoinfra.go.id/cfind/source/files/keputusan-bersama-3-menteri-nomor-1017-2-2-tahun-2024.pdf",
+        "https://www.kemenkopmk.go.id/sites/default/files/artikel/2025-08/SKB%20Perubahan%20Libur%20Nasional%20dan%20Cuti%20Bersama%20Tahun%202025.pdf",
     ],
 }
 
@@ -100,101 +98,85 @@ def create_driver() -> webdriver.Chrome:
     options.page_load_strategy = "eager"
 
     # Gunakan Chromium & Chromedriver dari sistem (Railway/Docker)
-    chrome_bin = os.getenv("CHROME_BIN", "/usr/bin/chromium")
-    chromedriver_path = os.getenv("CHROMEDRIVER_PATH", "/usr/bin/chromedriver")
+    chrome_candidates = [
+        os.getenv("CHROME_BIN", ""),
+        "/usr/bin/chromium",
+        "/usr/bin/chromium-browser",
+        "/usr/bin/google-chrome",
+        "/usr/bin/google-chrome-stable",
+    ]
+    driver_candidates = [
+        os.getenv("CHROMEDRIVER_PATH", ""),
+        "/usr/bin/chromedriver",
+        "/usr/lib/chromium/chromedriver",
+        "/usr/lib/chromium-browser/chromedriver",
+    ]
 
-    options.binary_location = chrome_bin
+    chrome_bin = next((p for p in chrome_candidates if p and Path(p).exists()), None)
+    chromedriver_path = next((p for p in driver_candidates if p and Path(p).exists()), None)
 
-    service = Service(executable_path=chromedriver_path)
+    if chrome_bin:
+        options.binary_location = chrome_bin
+        print(f"    Chrome binary: {chrome_bin}")
+    if chromedriver_path:
+        print(f"    Chromedriver : {chromedriver_path}")
+        service = Service(executable_path=chromedriver_path)
+    else:
+        # biarkan selenium cari sendiri
+        service = Service()
+
     driver = webdriver.Chrome(service=service, options=options)
     driver.set_page_load_timeout(30)
     return driver
 
 
-def find_skb_on_page(driver, target_year: Optional[int] = None) -> Tuple[str, int]:
-    """
-    Cari kartu SKB di halaman list.
-    Jika target_year diisi, cari yang mengandung tahun tersebut.
-    Return: (title, year)
-    """
-    soup = BeautifulSoup(driver.page_source, "html.parser")
-    candidates = []
 
-    for text_node in soup.stripped_strings:
-        if "Hari Libur Nasional dan Cuti Bersama" not in text_node:
-            continue
-        if "Tahun" not in text_node:
-            continue
-
-        year_match = re.search(r"Tahun\s+(\d{4})", text_node)
-        if not year_match:
-            continue
-
-        year = int(year_match.group(1))
-        title = text_node.strip()[:250]
-        candidates.append((title, year))
-
-    if not candidates:
-        return "SKB terbaru", target_year or 2027
-
-    # Filter by target year if specified
-    if target_year:
-        matched = [c for c in candidates if c[1] == target_year]
-        if matched:
-            return matched[0]
-        # Jika tidak ketemu di halaman pertama, tetap kembalikan yang paling dekat
-        print(f"[!] Tahun {target_year} tidak ditemukan di halaman pertama.")
-        print(f"    Kandidat yang ada: {[c[1] for c in candidates]}")
-
-    # Ambil yang tahun terbesar (terbaru)
-    candidates.sort(key=lambda x: x[1], reverse=True)
-    return candidates[0]
-
-
-def extract_pdf_url_from_detail(driver) -> Optional[str]:
-    """Ambil URL PDF dari tombol Unduh di halaman detail."""
+def extract_pdf_url_from_element(driver, btn) -> Optional[str]:
+    """Ambil URL PDF dari atribut Alpine.js @click pada tombol Unduh."""
     try:
-        unduh_btns = WebDriverWait(driver, 8).until(
-            EC.presence_of_all_elements_located(
-                (By.XPATH, "//button[contains(text(),'Unduh') or contains(text(),'unduh')]")
-            )
+        attrs = driver.execute_script(
+            """
+            const el = arguments[0];
+            const result = {};
+            for (const attr of el.attributes) {
+                result[attr.name] = attr.value;
+            }
+            return result;
+            """,
+            btn,
         )
+        click_val = (
+            attrs.get("@click")
+            or attrs.get("x-on:click")
+            or attrs.get("onclick")
+            or ""
+        )
+        click_val = click_val.replace("\\/", "/")
+        m = re.search(r"https?://[^\s'\"<>]+?\.pdf", click_val)
+        if m:
+            return m.group(0)
+        m2 = re.search(r"data-jdih\.menpan\.go\.id/dokumen/[^\s'\"<>]+\.pdf", click_val)
+        if m2:
+            return "https://" + m2.group(0)
     except Exception:
-        unduh_btns = driver.find_elements(
-            By.XPATH, "//button[contains(text(),'Unduh') or contains(text(),'unduh')]"
-        )
-
-    for btn in unduh_btns:
-        try:
-            attrs = driver.execute_script(
-                """
-                const el = arguments[0];
-                const result = {};
-                for (const attr of el.attributes) {
-                    result[attr.name] = attr.value;
-                }
-                return result;
-                """,
-                btn,
-            )
-            click_val = attrs.get("@click") or attrs.get("x-on:click") or ""
-            pdf_match = re.search(
-                r"https?://data-jdih\.menpan\.go\.id/dokumen/[^'\"\\]+\.pdf",
-                click_val.replace("\\/", "/"),
-            )
-            if pdf_match:
-                return pdf_match.group(0)
-        except Exception:
-            continue
+        pass
     return None
+
+
+def get_all_lihat_buttons(driver):
+    return driver.find_elements(By.XPATH, "//button[contains(normalize-space(.),'Lihat')]")
 
 
 def scrape_skb(target_year: Optional[int] = None) -> Tuple[str, str, int]:
     """
-    Scrape SKB.
-    - target_year=None → ambil yang terbaru
-    - target_year=2025 → cari yang tahun 2025
-    Return: (title, pdf_url, year)
+    Scrape dinamis:
+    1. Buka daftar Keputusan Bersama Menteri
+    2. Loop semua tombol Lihat
+    3. Di halaman detail, baca judul + tahun
+    4. Ambil URL PDF dari tombol Unduh
+    5. Jika target_year cocok (atau ambil terbaru), kembalikan
+
+    Tidak bergantung hardcode nama file.
     """
     print(f"[*] Membuka halaman daftar (target: {target_year or 'terbaru'})...")
     driver = create_driver()
@@ -203,64 +185,152 @@ def scrape_skb(target_year: Optional[int] = None) -> Tuple[str, str, int]:
         driver.get(LIST_URL)
         time.sleep(3)
 
-        title, year = find_skb_on_page(driver, target_year)
-        print(f"[+] Dokumen: {title[:80]}... (tahun {year})")
+        # Kumpulkan kandidat dari teks halaman dulu (cepat)
+        soup = BeautifulSoup(driver.page_source, "html.parser")
+        page_candidates = []
+        for text_node in soup.stripped_strings:
+            if "Hari Libur Nasional dan Cuti Bersama" in text_node and "Tahun" in text_node:
+                ym = re.search(r"Tahun\s+(\d{4})", text_node)
+                if ym:
+                    page_candidates.append((text_node.strip()[:200], int(ym.group(1))))
 
-        # Klik tombol Lihat yang sesuai
-        # Karena Livewire, kita klik tombol Lihat berdasarkan urutan
-        buttons = driver.find_elements(By.XPATH, "//button[contains(text(),'Lihat')]")
+        if page_candidates:
+            years_found = sorted({c[1] for c in page_candidates}, reverse=True)
+            print(f"[+] Tahun terdeteksi di halaman: {years_found}")
+
+        buttons = get_all_lihat_buttons(driver)
         if not buttons:
-            raise RuntimeError("Tombol Lihat tidak ditemukan")
+            raise RuntimeError("Tidak ada tombol Lihat di halaman daftar")
 
-        # Jika target_year spesifik, coba temukan index yang cocok
-        click_index = 0
-        if target_year:
-            # Ambil semua teks kartu untuk mapping index
-            page_text = driver.page_source
-            # Sederhana: klik berurutan sampai ketemu tahun yang cocok di detail
-            # Untuk optimasi, kita klik yang pertama dulu (biasanya terbaru)
-            pass
+        print(f"[*] Memeriksa {len(buttons)} dokumen...")
 
-        buttons[click_index].click()
-        time.sleep(2.5)
+        found = []  # list of (title, pdf_url, year)
 
-        pdf_url = extract_pdf_url_from_detail(driver)
+        # Batasi biar tidak terlalu lama (cukup 12 item teratas biasanya)
+        max_check = min(len(buttons), 12)
 
-        # Fallback: coba pola nama file yang diketahui
-        if not pdf_url:
-            print("[*] Mencoba pola nama file PDF yang diketahui...")
-            candidates_names = []
-            if year in KNOWN_PDFS:
-                val = KNOWN_PDFS[year]
-                if isinstance(val, list):
-                    candidates_names.extend(val)
-                else:
-                    candidates_names.append(val)
-            candidates_names.extend([
-                f"{year-1}skb002.pdf",
-                f"{year-1}skbmenpanrb002.pdf",
-                f"{year-1}skbmenpanrb005.pdf",
-                f"{year}skb002.pdf",
-                f"{year-1}skb003.pdf",
-            ])
-            # hapus duplikat sambil jaga urutan
-            seen = set()
-            candidates_names = [x for x in candidates_names if not (x in seen or seen.add(x))]
-            for name in candidates_names:
-                test = f"{PDF_BASE}/{name}"
-                try:
-                    r = requests.head(test, headers=HEADERS, timeout=8, allow_redirects=True)
-                    if r.status_code == 200 and "pdf" in r.headers.get("content-type", "").lower():
-                        pdf_url = test
-                        print(f"[+] Ditemukan via pola: {name}")
+        for i in range(max_check):
+            # re-query setiap iterasi karena DOM bisa berubah setelah back
+            buttons = get_all_lihat_buttons(driver)
+            if i >= len(buttons):
+                break
+
+            btn = buttons[i]
+            try:
+                driver.execute_script("arguments[0].scrollIntoView({block:'center'});", btn)
+                time.sleep(0.3)
+                btn.click()
+                time.sleep(2)
+
+                # Baca judul di halaman detail
+                detail_text = driver.page_source
+                detail_soup = BeautifulSoup(detail_text, "html.parser")
+                title = ""
+                year = None
+
+                # Cari teks judul yang mengandung Cuti Bersama / Libur Nasional
+                for t in detail_soup.stripped_strings:
+                    if "Hari Libur Nasional dan Cuti Bersama" in t:
+                        title = t.strip()[:250]
+                        ym = re.search(r"Tahun\s+(\d{4})", t)
+                        if ym:
+                            year = int(ym.group(1))
                         break
+
+                # Fallback: cari pola Tahun YYYY di seluruh halaman detail
+                if year is None:
+                    ym = re.search(
+                        r"Cuti Bersama Tahun\s+(\d{4})|Libur Nasional.*?Tahun\s+(\d{4})",
+                        detail_soup.get_text(" ", strip=True),
+                        re.IGNORECASE,
+                    )
+                    if ym:
+                        year = int(ym.group(1) or ym.group(2))
+
+                # Ambil PDF URL dari tombol Unduh
+                pdf_url = None
+                unduh_btns = driver.find_elements(
+                    By.XPATH,
+                    "//button[contains(translate(., 'UNDUH', 'unduh'), 'unduh')]",
+                )
+                for ub in unduh_btns:
+                    pdf_url = extract_pdf_url_from_element(driver, ub)
+                    if pdf_url:
+                        break
+
+                # Alternatif: cari link .pdf langsung di DOM
+                if not pdf_url:
+                    for a in driver.find_elements(By.CSS_SELECTOR, "a[href$='.pdf']"):
+                        href = a.get_attribute("href") or ""
+                        if href.endswith(".pdf"):
+                            pdf_url = href
+                            break
+
+                if year and pdf_url:
+                    print(f"    [{i+1}] Tahun {year} → PDF OK")
+                    found.append((title or f"SKB Tahun {year}", pdf_url, year))
+                elif year:
+                    print(f"    [{i+1}] Tahun {year} → PDF tidak ketemu di detail")
+                else:
+                    print(f"    [{i+1}] Bukan dokumen libur / tahun tidak terbaca")
+
+                # Kembali ke daftar
+                driver.back()
+                time.sleep(1.5)
+
+            except Exception as e:
+                print(f"    [{i+1}] Error: {e}")
+                try:
+                    driver.get(LIST_URL)
+                    time.sleep(2)
                 except Exception:
-                    continue
+                    pass
+                continue
 
-        if not pdf_url:
-            raise RuntimeError(f"URL PDF untuk tahun {year} tidak ditemukan")
+        if not found:
+            # Fallback terakhir: pakai KNOWN_PDF_URLS jika ada
+            if target_year and target_year in KNOWN_PDF_URLS:
+                for url in KNOWN_PDF_URLS[target_year]:
+                    try:
+                        r = requests.head(url, headers=HEADERS, timeout=10, allow_redirects=True)
+                        if r.status_code == 200:
+                            print(f"[+] Fallback URL langsung: {url}")
+                            return f"SKB Tahun {target_year}", url, target_year
+                    except Exception:
+                        continue
+            raise RuntimeError(
+                f"Tidak menemukan SKB libur untuk tahun {target_year or 'apapun'} di halaman daftar"
+            )
 
-        print(f"[+] PDF URL: {pdf_url}")
+        # Pilih hasil
+        if target_year:
+            matched = [x for x in found if x[2] == target_year]
+            if matched:
+                title, pdf_url, year = matched[0]
+                print(f"[+] Dipilih: tahun {year}")
+                print(f"[+] PDF: {pdf_url}")
+                return title, pdf_url, year
+            else:
+                # coba known urls
+                if target_year in KNOWN_PDF_URLS:
+                    for url in KNOWN_PDF_URLS[target_year]:
+                        try:
+                            r = requests.head(url, headers=HEADERS, timeout=10, allow_redirects=True)
+                            if r.status_code == 200:
+                                print(f"[+] Tahun {target_year} tidak di list, pakai URL cadangan")
+                                return f"SKB Tahun {target_year}", url, target_year
+                        except Exception:
+                            continue
+                available = sorted({x[2] for x in found})
+                raise RuntimeError(
+                    f"Tahun {target_year} tidak ditemukan. Yang tersedia di halaman: {available}"
+                )
+
+        # Tanpa target → ambil tahun terbesar
+        found.sort(key=lambda x: x[2], reverse=True)
+        title, pdf_url, year = found[0]
+        print(f"[+] Dipilih (terbaru): tahun {year}")
+        print(f"[+] PDF: {pdf_url}")
         return title, pdf_url, year
 
     finally:
@@ -389,6 +459,7 @@ def extract_from_ocr(text: str, year: int) -> Dict:
 # ============================================================
 def get_fallback(year: int) -> Optional[Dict]:
     """Return data akurat jika tersedia, else None."""
+    # --- 2027 ---
     if year == 2027:
         return {
             "year": 2027,
@@ -427,7 +498,51 @@ def get_fallback(year: int) -> Optional[Dict]:
             "total_national": 18,
             "total_joint_leave": 8,
         }
+
+    # --- 2025 (termasuk revisi 18 Agustus cuti bersama) ---
+    if year == 2025:
+        return {
+            "year": 2025,
+            "source": "SKB 1017/2/2 Tahun 2024 + Perubahan SKB 933/1/3 Tahun 2025",
+            "scraped_at": datetime.now(timezone.utc).isoformat(),
+            "national_holidays": [
+                {"date": "2025-01-01", "day": "Rabu", "name": "Tahun Baru 2025 Masehi", "type": "national_holiday"},
+                {"date": "2025-01-27", "day": "Senin", "name": "Isra Mikraj Nabi Muhammad S.A.W.", "type": "national_holiday"},
+                {"date": "2025-01-29", "day": "Rabu", "name": "Tahun Baru Imlek 2576 Kongzili", "type": "national_holiday"},
+                {"date": "2025-03-29", "day": "Sabtu", "name": "Hari Suci Nyepi (Tahun Baru Saka 1947)", "type": "national_holiday"},
+                {"date": "2025-03-31", "day": "Senin", "name": "Idul Fitri 1446 Hijriah", "type": "national_holiday"},
+                {"date": "2025-04-01", "day": "Selasa", "name": "Idul Fitri 1446 Hijriah", "type": "national_holiday"},
+                {"date": "2025-04-18", "day": "Jumat", "name": "Wafat Yesus Kristus", "type": "national_holiday"},
+                {"date": "2025-04-20", "day": "Minggu", "name": "Kebangkitan Yesus Kristus (Paskah)", "type": "national_holiday"},
+                {"date": "2025-05-01", "day": "Kamis", "name": "Hari Buruh Internasional", "type": "national_holiday"},
+                {"date": "2025-05-12", "day": "Senin", "name": "Hari Raya Waisak 2569 BE", "type": "national_holiday"},
+                {"date": "2025-05-29", "day": "Kamis", "name": "Kenaikan Yesus Kristus", "type": "national_holiday"},
+                {"date": "2025-06-01", "day": "Minggu", "name": "Hari Lahir Pancasila", "type": "national_holiday"},
+                {"date": "2025-06-06", "day": "Jumat", "name": "Idul Adha 1446 Hijriah", "type": "national_holiday"},
+                {"date": "2025-06-27", "day": "Jumat", "name": "1 Muharam Tahun Baru Islam 1447 Hijriah", "type": "national_holiday"},
+                {"date": "2025-08-17", "day": "Minggu", "name": "Proklamasi Kemerdekaan", "type": "national_holiday"},
+                {"date": "2025-09-05", "day": "Jumat", "name": "Maulid Nabi Muhammad S.A.W.", "type": "national_holiday"},
+                {"date": "2025-12-25", "day": "Kamis", "name": "Kelahiran Yesus Kristus", "type": "national_holiday"},
+            ],
+            "joint_leave": [
+                {"date": "2025-01-28", "day": "Selasa", "name": "Tahun Baru Imlek 2576 Kongzili", "type": "joint_leave"},
+                {"date": "2025-03-28", "day": "Jumat", "name": "Hari Suci Nyepi (Tahun Baru Saka 1947)", "type": "joint_leave"},
+                {"date": "2025-04-02", "day": "Rabu", "name": "Idul Fitri 1446 Hijriah", "type": "joint_leave"},
+                {"date": "2025-04-03", "day": "Kamis", "name": "Idul Fitri 1446 Hijriah", "type": "joint_leave"},
+                {"date": "2025-04-04", "day": "Jumat", "name": "Idul Fitri 1446 Hijriah", "type": "joint_leave"},
+                {"date": "2025-04-07", "day": "Senin", "name": "Idul Fitri 1446 Hijriah", "type": "joint_leave"},
+                {"date": "2025-05-13", "day": "Selasa", "name": "Hari Raya Waisak 2569 BE", "type": "joint_leave"},
+                {"date": "2025-05-30", "day": "Jumat", "name": "Kenaikan Yesus Kristus", "type": "joint_leave"},
+                {"date": "2025-06-09", "day": "Senin", "name": "Idul Adha 1446 Hijriah", "type": "joint_leave"},
+                {"date": "2025-08-18", "day": "Senin", "name": "Proklamasi Kemerdekaan (Cuti Bersama)", "type": "joint_leave"},
+                {"date": "2025-12-26", "day": "Jumat", "name": "Kelahiran Yesus Kristus", "type": "joint_leave"},
+            ],
+            "total_national": 17,
+            "total_joint_leave": 11,
+        }
+
     return None
+
 
 
 # ============================================================
