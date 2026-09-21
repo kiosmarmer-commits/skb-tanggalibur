@@ -11,15 +11,15 @@
     },
     "2027": {
       "file": "holidays-2027.json",
-      "total_national": 8,
-      "total_joint_leave": 4,
+      "total_national": 18,
+      "total_joint_leave": 8,
       "source_pdf": "https://data-jdih.menpan.go.id/dokumen/2026skb002.pdf",
       "source_sha256": "dc43367115b4a5485bae697143bd0c93abbba3b8dd951195f734c9777cede66e",
-      "scraped_at": "2026-09-21T15:34:32.939786+00:00",
-      "complete": false
+      "scraped_at": "2026-09-21T17:54:18.416354+00:00",
+      "complete": true
     }
   },
   "latest_year": 2027,
-  "next_check_after": "2026-10-05",
-  "updated_at": "2026-09-21T17:48:32.762939+00:00"
+  "next_check_after": "2027-09-01",
+  "updated_at": "2026-09-21T17:54:19.773293+00:00"
 }
