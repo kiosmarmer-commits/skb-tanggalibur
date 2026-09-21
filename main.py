@@ -40,7 +40,6 @@ from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.ui import WebDriverWait
-from webdriver_manager.chrome import ChromeDriverManager
 
 # ============================================================
 # KONFIGURASI
@@ -68,9 +67,20 @@ HEADERS = {
 
 # Mapping nama file PDF yang sudah diketahui (fallback cepat)
 KNOWN_PDFS = {
-    2027: "2026skb002.pdf",
-    2026: "2025skbmenpanrb005.pdf",
-    2025: "2024skb002.pdf",  # perkiraan, akan dicoba beberapa pola
+    2027: [
+        "2026skb002.pdf",
+    ],
+    2026: [
+        "2025skbmenpanrb005.pdf",
+        "2025skb005.pdf",
+        "2025skb002.pdf",
+    ],
+    2025: [
+        "2024skb002.pdf",
+        "2024skbmenpanrb002.pdf",
+        "2024skbmenpanrb005.pdf",
+        "1017.pdf",
+    ],
 }
 
 
@@ -84,11 +94,18 @@ def create_driver() -> webdriver.Chrome:
     options.add_argument("--disable-dev-shm-usage")
     options.add_argument("--disable-gpu")
     options.add_argument("--disable-extensions")
+    options.add_argument("--disable-software-rasterizer")
     options.add_argument("--window-size=1920,1080")
     options.add_argument(f"--user-agent={HEADERS['User-Agent']}")
     options.page_load_strategy = "eager"
 
-    service = Service(ChromeDriverManager().install())
+    # Gunakan Chromium & Chromedriver dari sistem (Railway/Docker)
+    chrome_bin = os.getenv("CHROME_BIN", "/usr/bin/chromium")
+    chromedriver_path = os.getenv("CHROMEDRIVER_PATH", "/usr/bin/chromedriver")
+
+    options.binary_location = chrome_bin
+
+    service = Service(executable_path=chromedriver_path)
     driver = webdriver.Chrome(service=service, options=options)
     driver.set_page_load_timeout(30)
     return driver
@@ -214,7 +231,11 @@ def scrape_skb(target_year: Optional[int] = None) -> Tuple[str, str, int]:
             print("[*] Mencoba pola nama file PDF yang diketahui...")
             candidates_names = []
             if year in KNOWN_PDFS:
-                candidates_names.append(KNOWN_PDFS[year])
+                val = KNOWN_PDFS[year]
+                if isinstance(val, list):
+                    candidates_names.extend(val)
+                else:
+                    candidates_names.append(val)
             candidates_names.extend([
                 f"{year-1}skb002.pdf",
                 f"{year-1}skbmenpanrb002.pdf",
@@ -222,6 +243,9 @@ def scrape_skb(target_year: Optional[int] = None) -> Tuple[str, str, int]:
                 f"{year}skb002.pdf",
                 f"{year-1}skb003.pdf",
             ])
+            # hapus duplikat sambil jaga urutan
+            seen = set()
+            candidates_names = [x for x in candidates_names if not (x in seen or seen.add(x))]
             for name in candidates_names:
                 test = f"{PDF_BASE}/{name}"
                 try:
