@@ -1,11 +1,15 @@
 """
 scrape_skb_holidays.py
 ======================
-Scraping Hari Libur Nasional & Cuti Bersama Indonesia dari:
-  1. JDIH Menpan (SKB 3 Menteri) — via Selenium Remote WebDriver
-  2. Fallback: API JSON publik (jika scraping gagal)
+Scraping Hari Libur Nasional & Cuti Bersama Indonesia dari JDIH Menpan.
 
-Output: hari-libur-{tahun}.json yang otomatis di-commit ke GitHub.
+Alur:
+  1. Buka halaman daftar SKB di JDIH Menpan.
+  2. Cari link SKB dengan judul mengandung "libur"/"cuti" & tahun target.
+  3. Klik tombol "Lihat" untuk masuk halaman detail.
+  4. Cari URL PDF & unduh.
+  5. Ekstrak teks dengan PyMuPDF, parsing jadi struktur JSON.
+  6. Commit JSON ke GitHub.
 
 Deploy: Railway (Python service + Selenium Standalone Chrome service)
 """
@@ -48,16 +52,8 @@ GITHUB_BRANCH = os.environ.get("GITHUB_BRANCH", "main")
 OUTPUT_DIR = Path("output")
 OUTPUT_DIR.mkdir(exist_ok=True)
 
-# Tahun target: tahun ini & tahun depan
 NOW = datetime.utcnow()
 TARGET_YEARS = [NOW.year, NOW.year + 1]
-
-# Fallback API JSON publik (kalau scraping JDIH gagal)
-FALLBACK_APIS = [
-    # Format: URL template dengan {year}
-    "https://raw.githubusercontent.com/game5413/Indonesia-Holidays-Calendar/main/data/{year}.json",
-    "https://raw.githubusercontent.com/guangrei/APIHariLibur_V2/main/holidays.json",
-]
 
 HEADERS = {
     "User-Agent": (
@@ -84,10 +80,6 @@ def log(msg):
     print(msg, flush=True)
 
 
-def safe_filename(s):
-    return re.sub(r"[^a-zA-Z0-9._-]", "_", s)
-
-
 # =========================================================
 # 1. SELENIUM SETUP
 # =========================================================
@@ -105,20 +97,17 @@ def setup_driver():
     )
     opts.add_experimental_option("useAutomationExtension", False)
 
-    driver = webdriver.Remote(
-        command_executor=SELENIUM_URL,
-        options=opts,
-    )
+    driver = webdriver.Remote(command_executor=SELENIUM_URL, options=opts)
     driver.set_page_load_timeout(60)
     return driver
 
 
 # =========================================================
-# 2. SCRAPING JDIH
+# 2. SCRAPING DAFTAR SKB DI JDIH
 # =========================================================
 def scrape_jdih(driver):
     """
-    Ambil semua link dokumen SKB dari halaman JDIH.
+    Ambil link detail SKB dari halaman daftar JDIH.
     Return list of dict: [{"url": ..., "judul": ...}, ...]
     """
     log(f"[*] Membuka {JDIH_URL}")
@@ -152,7 +141,7 @@ def scrape_jdih(driver):
         except Exception:
             pass
 
-        # Ambil semua link
+        # Ambil semua <a> yang mengarah ke dokumen-hukum
         links = driver.find_elements(By.TAG_NAME, "a")
         log(f"    Total <a> di halaman: {len(links)}")
 
@@ -166,20 +155,33 @@ def scrape_jdih(driver):
 
             if not href or href in seen_href:
                 continue
-
-            # Filter: hanya link dokumen-hukum
             if "dokumen-hukum/" not in href:
                 continue
 
-            # Judul harus mengandung 'libur' atau 'cuti'
-            low = text.lower()
-            if not ("libur" in low or "cuti" in low or "hari besar" in low):
+            # Cek judul link ATAU parent card-nya
+            judul = text
+            if not ("libur" in judul.lower() or "cuti" in judul.lower()):
+                # Coba ambil teks dari parent (card)
+                try:
+                    parent = a.find_element(
+                        By.XPATH, "./ancestor::*[self::div or self::article][1]"
+                    )
+                    parent_text = (parent.text or "").strip()
+                    if ("libur" in parent_text.lower()
+                            or "cuti" in parent_text.lower()):
+                        judul = parent_text
+                except Exception:
+                    pass
+
+            if not ("libur" in judul.lower()
+                    or "cuti" in judul.lower()
+                    or "hari besar" in judul.lower()):
                 continue
 
             seen_href.add(href)
-            all_links.append({"url": href, "judul": text})
+            all_links.append({"url": href, "judul": judul})
             page_added += 1
-            log(f"    → {text[:100]}")
+            log(f"    → {judul[:120].replace(chr(10), ' | ')}")
 
         log(f"    Link relevan di halaman {page}: {page_added}")
 
@@ -215,38 +217,113 @@ def filter_skb_by_year(links, years):
 
 
 # =========================================================
-# 3. UNDUH & EKSTRAK PDF
+# 3. BUKA HALAMAN DETAIL & UNDUH PDF
 # =========================================================
-def find_pdf_url(driver, page_url):
-    """Buka halaman detail, cari URL PDF."""
-    driver.get(page_url)
+def open_detail_and_find_pdf(driver, detail_url, tahun):
+    """
+    Buka halaman detail SKB, klik tombol 'Lihat' untuk masuk ke viewer,
+    lalu cari URL PDF.
+    """
+    log(f"    Membuka halaman detail: {detail_url}")
+    driver.get(detail_url)
     time.sleep(5)
 
-    # Cari <a> / <iframe> / <embed> dengan .pdf
-    candidates = []
-    for sel in ["a", "iframe", "embed", "object"]:
-        for el in driver.find_elements(By.TAG_NAME, sel):
-            src = (
-                el.get_attribute("href")
-                or el.get_attribute("src")
-                or el.get_attribute("data")
-                or ""
+    # Simpan HTML debug
+    try:
+        debug_path = OUTPUT_DIR / f"debug-detail-{tahun}.html"
+        debug_path.write_text(driver.page_source, encoding="utf-8")
+        log(f"    [i] HTML debug: {debug_path}")
+    except Exception:
+        pass
+
+    # ---------- Klik tombol "Lihat" ----------
+    clicked = False
+    for xpath in [
+        "//a[normalize-space(.)='Lihat']",
+        "//button[normalize-space(.)='Lihat']",
+        "//a[contains(normalize-space(.), 'Lihat')]",
+        "//button[contains(normalize-space(.), 'Lihat')]",
+        "//a[contains(@href, 'lihat') or contains(@href, 'view')]",
+    ]:
+        try:
+            btn = driver.find_element(By.XPATH, xpath)
+            driver.execute_script("arguments[0].click();", btn)
+            log(f"    [✓] Tombol 'Lihat' diklik via: {xpath}")
+            clicked = True
+            break
+        except Exception:
+            continue
+
+    if not clicked:
+        log("    [!] Tombol 'Lihat' tidak ditemukan, coba cari PDF langsung.")
+
+    # Tunggu viewer/PDF dimuat
+    time.sleep(6)
+
+    # ---------- Cari URL PDF ----------
+    pdf_url = None
+
+    # 1) Cek semua elemen yang mungkin membawa PDF
+    for sel in ["a", "iframe", "embed", "object", "source"]:
+        try:
+            for el in driver.find_elements(By.TAG_NAME, sel):
+                src = (
+                    el.get_attribute("href")
+                    or el.get_attribute("src")
+                    or el.get_attribute("data")
+                    or ""
+                )
+                if ".pdf" in src.lower():
+                    pdf_url = src
+                    break
+            if pdf_url:
+                break
+        except Exception:
+            continue
+
+    # 2) Cek via JavaScript (jika PDF di-embed oleh viewer JS)
+    if not pdf_url:
+        try:
+            pdf_url = driver.execute_script(
+                """
+                const el = document.querySelector(
+                  'iframe[src*=".pdf"], embed[src*=".pdf"], '
+                  'a[href*=".pdf"], object[data*=".pdf"]'
+                );
+                if (el) return el.src || el.href || el.data;
+                return null;
+                """
             )
-            if ".pdf" in src.lower():
-                candidates.append(src)
+        except Exception:
+            pass
 
-    # Cari tombol Download/Unduh
-    if not candidates:
-        for el in driver.find_elements(
-            By.XPATH,
-            "//a[contains(., 'Download') or contains(., 'Unduh') "
-            "or contains(., 'PDF')]",
-        ):
-            href = el.get_attribute("href") or ""
-            if href:
-                candidates.append(href)
+    # 3) Cek via tombol Unduh/Download
+    if not pdf_url:
+        for xpath in [
+            "//a[contains(., 'Unduh') or contains(., 'Download')]",
+            "//button[contains(., 'Unduh') or contains(., 'Download')]",
+        ]:
+            try:
+                el = driver.find_element(By.XPATH, xpath)
+                href = el.get_attribute("href") or ""
+                if href:
+                    pdf_url = href
+                    break
+                # Klik untuk trigger download
+                driver.execute_script("arguments[0].click();", el)
+                time.sleep(5)
+                # Cek lagi
+                for a in driver.find_elements(By.TAG_NAME, "a"):
+                    h = a.get_attribute("href") or ""
+                    if ".pdf" in h.lower():
+                        pdf_url = h
+                        break
+                if pdf_url:
+                    break
+            except Exception:
+                continue
 
-    return candidates[0] if candidates else None
+    return pdf_url
 
 
 def download_pdf(pdf_url, tahun):
@@ -257,14 +334,17 @@ def download_pdf(pdf_url, tahun):
         with open(pdf_path, "wb") as f:
             for chunk in r.iter_content(chunk_size=8192):
                 f.write(chunk)
-        log(f"[✓] PDF {tahun} diunduh: {pdf_path} "
+        log(f"    [✓] PDF diunduh: {pdf_path} "
             f"({pdf_path.stat().st_size // 1024} KB)")
         return pdf_path
     except Exception as e:
-        log(f"[!] Gagal unduh PDF {tahun}: {e}")
+        log(f"    [!] Gagal unduh PDF: {e}")
         return None
 
 
+# =========================================================
+# 4. EKSTRAK TEKS & PARSING
+# =========================================================
 def extract_text(pdf_path):
     try:
         doc = fitz.open(pdf_path)
@@ -272,15 +352,12 @@ def extract_text(pdf_path):
         doc.close()
         return text
     except Exception as e:
-        log(f"[!] Gagal ekstrak PDF: {e}")
+        log(f"    [!] Gagal ekstrak PDF: {e}")
         return ""
 
 
-# =========================================================
-# 4. PARSING TEKS SKB
-# =========================================================
 def parse_tanggal_iso(tgl_str):
-    """'1 Januari 2026' -> '2026-01-01'"""
+    """'1 Januari 2026' -> ('2026-01-01', 'Kamis')"""
     m = re.match(r"(\d{1,2})\s+(\w+)\s+(\d{4})", tgl_str, re.I)
     if not m:
         return None, None
@@ -296,46 +373,39 @@ def parse_tanggal_iso(tgl_str):
 
 
 def parse_skb(text, tahun):
-    """
-    Parsing teks PDF SKB untuk menghasilkan struktur JSON.
-    """
+    """Parsing teks PDF SKB menjadi struktur JSON."""
     if not text:
         return None
 
-    text = re.sub(r"\s+", " ", text)
+    text_norm = re.sub(r"\s+", " ", text)
 
     # Nomor SKB
     m = re.search(
-        r"(Nomor[:\s]*[\d]+[^\n]{0,80}?Tahun\s*\d{4})", text, re.I
+        r"(Nomor[:\s]*\d+[^\n]{0,80}?Tahun\s*\d{4})", text_norm, re.I
     )
     sumber = m.group(1).strip() if m else f"SKB Hari Libur {tahun}"
 
-    # Pola tanggal
     bulan = "|".join(BULAN_ID.keys())
     pola = re.compile(rf"(\d{{1,2}})\s+({bulan})\s+{tahun}", re.I)
 
-    # Tentukan batas bagian
-    upper = text.upper()
+    upper = text_norm.upper()
     idx_libur = upper.find("HARI LIBUR NASIONAL")
     idx_cuti = upper.find("CUTI BERSAMA")
 
     libur, cuti = [], []
     seen_tgl = set()
 
-    for match in pola.finditer(text):
-        tgl_str = match.group(0)
-        iso, hari = parse_tanggal_iso(tgl_str)
+    for match in pola.finditer(text_norm):
+        iso, hari = parse_tanggal_iso(match.group(0))
         if not iso or iso in seen_tgl:
             continue
         seen_tgl.add(iso)
 
-        # Ambil keterangan setelah tanggal
+        # Keterangan = 150 karakter setelah tanggal
         s = match.end()
-        ket = text[s:s + 150].strip()
-        ket = re.split(r"[.;]|\d{1,2}\s+(?:Januari|Februari|Maret|April|Mei|"
-                       r"Juni|Juli|Agustus|September|Oktober|November|Desember)",
-                       ket)[0].strip()
-        ket = re.sub(r"^(?:[-–—:]\s*)", "", ket).strip()
+        ket = text_norm[s:s + 150].strip()
+        ket = re.split(r"[.;]\s|\s(?=\d{1,2}\s+\w+\s+\d{4})", ket)[0].strip()
+        ket = re.sub(r"^[-–—:\s]+", "", ket).strip()
 
         item = {"tanggal": iso, "hari": hari, "keterangan": ket}
 
@@ -367,116 +437,9 @@ def parse_skb(text, tahun):
 
 
 # =========================================================
-# 5. FALLBACK API PUBLIK
-# =========================================================
-def fetch_fallback(tahun):
-    """Ambil data hari libur dari API JSON publik."""
-    log(f"[*] Mencoba fallback API untuk {tahun}...")
-
-    # Coba API 1: game5413
-    try:
-        url = FALLBACK_APIS[0].format(year=tahun)
-        r = requests.get(url, headers=HEADERS, timeout=30)
-        if r.status_code == 200:
-            data = r.json()
-            result = normalize_fallback(data, tahun, url)
-            if result:
-                log(f"[✓] Fallback 1 berhasil ({len(result['libur_nasional'])} libur)")
-                return result
-    except Exception as e:
-        log(f"[!] Fallback 1 gagal: {e}")
-
-    # Coba API 2: guangrei
-    try:
-        r = requests.get(FALLBACK_APIS[1], headers=HEADERS, timeout=30)
-        if r.status_code == 200:
-            data = r.json()
-            result = normalize_fallback(data, tahun, FALLBACK_APIS[1])
-            if result:
-                log(f"[✓] Fallback 2 berhasil ({len(result['libur_nasional'])} libur)")
-                return result
-    except Exception as e:
-        log(f"[!] Fallback 2 gagal: {e}")
-
-    log(f"[!] Semua fallback gagal untuk {tahun}")
-    return None
-
-
-def normalize_fallback(data, tahun, sumber_url):
-    """
-    Normalisasi data dari berbagai sumber fallback ke format standar.
-    """
-    libur, cuti = [], []
-
-    # Kalau data adalah list of dict
-    items = data if isinstance(data, list) else data.get("data", [])
-    if isinstance(items, dict):
-        # Mungkin format {"2026-01-01": {...}}
-        items = [
-            {"tanggal": k, **v} if isinstance(v, dict) else {"tanggal": k, "keterangan": str(v)}
-            for k, v in items.items()
-        ]
-
-    for item in items:
-        if not isinstance(item, dict):
-            continue
-        tanggal = (
-            item.get("tanggal")
-            or item.get("date")
-            or item.get("holiday_date")
-            or ""
-        )
-        if not tanggal.startswith(str(tahun)):
-            continue
-
-        keterangan = (
-            item.get("keterangan")
-            or item.get("summary")
-            or item.get("name")
-            or item.get("description")
-            or ""
-        )
-
-        try:
-            dt = datetime.strptime(tanggal[:10], "%Y-%m-%d")
-            hari = HARI_ID[dt.weekday()]
-        except Exception:
-            hari = ""
-
-        entry = {"tanggal": tanggal[:10], "hari": hari, "keterangan": keterangan}
-
-        is_cuti = (
-            item.get("is_cuti_bersama")
-            or "cuti bersama" in keterangan.lower()
-        )
-        if is_cuti:
-            cuti.append(entry)
-        else:
-            libur.append(entry)
-
-    if not libur and not cuti:
-        return None
-
-    libur.sort(key=lambda x: x["tanggal"])
-    cuti.sort(key=lambda x: x["tanggal"])
-
-    return {
-        "tahun": tahun,
-        "sumber": "API JSON publik (fallback)",
-        "sumber_url": sumber_url,
-        "generated_at": datetime.utcnow().isoformat() + "Z",
-        "libur_nasional": libur,
-        "cuti_bersama": cuti,
-    }
-
-
-# =========================================================
-# 6. GITHUB COMMIT
+# 5. GITHUB COMMIT
 # =========================================================
 def commit_to_github(files_to_commit, message):
-    """
-    Commit list of {"path": ..., "content": ...} ke GitHub.
-    """
     if not GITHUB_TOKEN or not GITHUB_REPO:
         log("[!] GITHUB_TOKEN / GITHUB_REPO tidak diset, skip commit.")
         return
@@ -519,49 +482,66 @@ def commit_to_github(files_to_commit, message):
 # =========================================================
 def main():
     log("=" * 60)
-    log(f"[*] Mulai scraping hari libur Indonesia")
+    log("[*] Mulai scraping hari libur Indonesia dari JDIH Menpan")
     log(f"[*] Target tahun: {TARGET_YEARS}")
     log("=" * 60)
 
-    results = {}       # {tahun: dict_json}
+    results = {}
     driver = None
 
-    # ---------- FASE 1: Scraping JDIH ----------
     try:
-        log("\n[FASE 1] Scraping JDIH Menpan via Selenium...")
+        log("\n[FASE 1] Setup Selenium WebDriver...")
         driver = setup_driver()
-        log(f"[✓] Terhubung ke Selenium: {SELENIUM_URL}")
+        log(f"[✓] Terhubung ke: {SELENIUM_URL}")
 
+        log("\n[FASE 2] Scraping daftar SKB...")
         links = scrape_jdih(driver)
-        skb_map = filter_skb_by_year(links, TARGET_YEARS)
-        log(f"[✓] SKB ditemukan untuk tahun: {list(skb_map.keys())}")
+        if not links:
+            log("[!] Tidak ada link SKB ditemukan. Keluar.")
+            sys.exit(1)
 
+        skb_map = filter_skb_by_year(links, TARGET_YEARS)
+        log(f"[✓] SKB cocok untuk tahun: {list(skb_map.keys())}")
+
+        if not skb_map:
+            log("[!] Tidak ada SKB untuk tahun target. Keluar.")
+            sys.exit(1)
+
+        log("\n[FASE 3] Proses setiap SKB...")
         for tahun, link in skb_map.items():
-            log(f"\n[*] Memproses SKB {tahun}: {link['judul'][:80]}")
-            pdf_url = find_pdf_url(driver, link["url"])
+            log(f"\n[*] === Tahun {tahun} ===")
+            log(f"    Judul: {link['judul'][:120]}")
+
+            pdf_url = open_detail_and_find_pdf(
+                driver, link["url"], tahun
+            )
             if not pdf_url:
-                log(f"[!] PDF tidak ditemukan untuk {tahun}")
+                log(f"    [!] PDF tidak ditemukan untuk {tahun}")
                 continue
 
-            log(f"    PDF URL: {pdf_url[:120]}")
+            log(f"    PDF URL: {pdf_url[:150]}")
             pdf_path = download_pdf(pdf_url, tahun)
             if not pdf_path:
                 continue
 
             text = extract_text(pdf_path)
             log(f"    Panjang teks: {len(text)} karakter")
+            if len(text) < 100:
+                log(f"    [!] Teks terlalu pendek, mungkin PDF scan.")
+                continue
 
             data = parse_skb(text, tahun)
-            if data:
-                results[tahun] = data
-                log(f"[✓] Parsing {tahun} berhasil: "
-                    f"{len(data['libur_nasional'])} libur + "
-                    f"{len(data['cuti_bersama'])} cuti bersama")
-            else:
-                log(f"[!] Parsing {tahun} gagal, akan pakai fallback")
+            if not data:
+                log(f"    [!] Parsing gagal.")
+                continue
+
+            results[tahun] = data
+            log(f"    [✓] Parsing OK: "
+                f"{len(data['libur_nasional'])} libur + "
+                f"{len(data['cuti_bersama'])} cuti bersama")
 
     except Exception as e:
-        log(f"[!] FASE 1 error: {e}")
+        log(f"[!] Error: {e}")
         log(traceback.format_exc())
     finally:
         if driver:
@@ -571,17 +551,8 @@ def main():
             except Exception:
                 pass
 
-    # ---------- FASE 2: Fallback untuk tahun yang belum berhasil ----------
-    log("\n[FASE 2] Fallback untuk tahun yang belum lengkap...")
-    for tahun in TARGET_YEARS:
-        if tahun in results and results[tahun]["libur_nasional"]:
-            continue
-        fb = fetch_fallback(tahun)
-        if fb:
-            results[tahun] = fb
-
-    # ---------- FASE 3: Simpan JSON & Commit ----------
-    log("\n[FASE 3] Simpan JSON & commit ke GitHub...")
+    # ---------- Simpan JSON & Commit ----------
+    log("\n[FASE 4] Simpan JSON & commit ke GitHub...")
     if not results:
         log("[!] Tidak ada data yang berhasil dikumpulkan. Keluar.")
         sys.exit(1)
