@@ -1,0 +1,83 @@
+{
+  "year": 2027,
+  "source": "Keputusan Bersama Menteri Agama, Ketenagakerjaan, dan PANRB",
+  "scraped_at": "2026-09-21T15:34:32.939786+00:00",
+  "national_holidays": [
+    {
+      "date": "2027-01-05",
+      "day": "Selasa",
+      "name": "Isra Mikraj Nabi Muhammad S.A.W.",
+      "type": "national_holiday"
+    },
+    {
+      "date": "2027-02-06",
+      "day": "",
+      "name": "Tahun Baru Imlek 2578 Kongzili",
+      "type": "national_holiday"
+    },
+    {
+      "date": "2027-03-26",
+      "day": "Jumat",
+      "name": "Wafat Yesus Kristus",
+      "type": "national_holiday"
+    },
+    {
+      "date": "2027-06-06",
+      "day": "Minggu",
+      "name": "1 Muharam Tahun Baru Islam 1449",
+      "type": "national_holiday"
+    },
+    {
+      "date": "2027-08-15",
+      "day": "",
+      "name": "Maulid Nabi Muhammad S.A.W.",
+      "type": "national_holiday"
+    },
+    {
+      "date": "2027-08-17",
+      "day": "",
+      "name": "Proklamasi Kemerdekaan",
+      "type": "national_holiday"
+    },
+    {
+      "date": "2027-12-25",
+      "day": "Sabtu",
+      "name": "Kelahiran Yesus Kristus",
+      "type": "national_holiday"
+    },
+    {
+      "date": "2027-12-26",
+      "day": "Minggu",
+      "name": "Isra Mikraj Nabi Muhammad S.A.W.",
+      "type": "national_holiday"
+    }
+  ],
+  "joint_leave": [
+    {
+      "date": "2027-03-09",
+      "day": "Selasa",
+      "name": "Idul Fitri 1448 Hijriah Maret dan",
+      "type": "joint_leave"
+    },
+    {
+      "date": "2027-03-12",
+      "day": "Selasa",
+      "name": "Idul Fitri 1448 Hijriah Maret dan",
+      "type": "joint_leave"
+    },
+    {
+      "date": "2027-03-15",
+      "day": "Selasa",
+      "name": "Idul Fitri 1448 Hijriah Maret dan",
+      "type": "joint_leave"
+    },
+    {
+      "date": "2027-12-24",
+      "day": "",
+      "name": "Kelahiran Yesus Kristus",
+      "type": "joint_leave"
+    }
+  ],
+  "total_national": 8,
+  "total_joint_leave": 4
+}
